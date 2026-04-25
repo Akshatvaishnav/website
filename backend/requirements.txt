@@ -1,1 +1,4 @@
-# No external Python dependencies are required for this project.
+flask
+flask-cors
+python-dotenv
+supabase
