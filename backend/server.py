@@ -4,6 +4,8 @@ import json
 import os
 import smtplib
 import ssl
+import threading
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -325,31 +327,54 @@ class SchoolWebsiteHandler(SimpleHTTPRequestHandler):
             )
         except RuntimeError as error:
             self.end_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": str(error)})
-            return
+        #     return
 
-        email_sent, email_error = send_notification_email(cleaned_payload, inquiry_id)
+        # email_sent, email_error = send_notification_email(cleaned_payload, inquiry_id)
 
-        status_update_error = None
+        # status_update_error = None
 
+        # try:
+        #     update_email_status(inquiry_id, email_sent, email_error)
+        # except RuntimeError as error:
+        #     status_update_error = str(error)
+
+        # if email_sent:
+        #     message = "Thank you. Your enquiry was saved and emailed to the school successfully."
+
+        #     if status_update_error:
+        #         message = f"{message} However, the email status could not be synced back to Supabase."
+
+        #     self.end_json(
+        #         HTTPStatus.CREATED,
+        #         {
+        #             "message": message,
+        #             "inquiryId": inquiry_id,
+        #         },
+        #     )
+
+
+
+        # ✅ Send response immediately
+        self.end_json(
+        HTTPStatus.CREATED,
+        {
+            "message": "Thank you. Your enquiry was submitted successfully.",
+            "inquiryId": inquiry_id,
+        },
+)
+
+        # ✅ Run email in background (non-blocking)
+        import threading
+
+        def background_task():
+            email_sent, email_error = send_notification_email(cleaned_payload, inquiry_id)
         try:
             update_email_status(inquiry_id, email_sent, email_error)
-        except RuntimeError as error:
-            status_update_error = str(error)
+        except Exception:
+            pass
 
-        if email_sent:
-            message = "Thank you. Your enquiry was saved and emailed to the school successfully."
-
-            if status_update_error:
-                message = f"{message} However, the email status could not be synced back to Supabase."
-
-            self.end_json(
-                HTTPStatus.CREATED,
-                {
-                    "message": message,
-                    "inquiryId": inquiry_id,
-                },
-            )
-            return
+        threading.Thread(target=background_task, daemon=True).start() 
+        return
 
         message = email_error or "Thank you. Your enquiry was saved successfully."
 
