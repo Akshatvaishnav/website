@@ -1,4 +1,8 @@
 flask
 flask-cors
 python-dotenv
+<<<<<<< HEAD
 supabase
+=======
+supabase
+>>>>>>> 900665daf0e5558e8cf30245e857c8a317052792
