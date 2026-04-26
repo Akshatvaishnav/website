@@ -361,7 +361,7 @@ class SchoolWebsiteHandler(SimpleHTTPRequestHandler):
             "message": "Thank you. Your enquiry was submitted successfully.",
             "inquiryId": inquiry_id,
         },
-)
+        )
 
         # ✅ Run email in background (non-blocking)
         import threading
