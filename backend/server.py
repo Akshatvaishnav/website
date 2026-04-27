@@ -143,7 +143,6 @@ def save_inquiry(payload: dict[str, str], remote_address: str | None) -> str:
         payload={
             "submitted_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "name": payload["name"],
-            "email": payload["email"],
             "phone": payload["phone"],
             "student_class": payload["grade"],
             "message": payload["message"],
