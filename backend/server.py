@@ -215,7 +215,6 @@ class SchoolWebsiteHandler(SimpleHTTPRequestHandler):
 
         cleaned_payload = {
             "name": str(payload.get("name", "")).strip(),
-            "email": str(payload.get("email", "")).strip(),
             "phone": str(payload.get("phone", "")).strip(),
             "grade": str(payload.get("grade", "")).strip(),
             "message": str(payload.get("message", "")).strip(),
@@ -223,7 +222,6 @@ class SchoolWebsiteHandler(SimpleHTTPRequestHandler):
 
         required_fields = {
             "name": "Parent name is required.",
-            "email": "Parent email is required.",
             "phone": "Mobile number is required.",
             "grade": "Student class is required.",
         }
@@ -232,10 +230,6 @@ class SchoolWebsiteHandler(SimpleHTTPRequestHandler):
             if not cleaned_payload[field_name]:
                 self.end_json(HTTPStatus.BAD_REQUEST, {"message": error_message})
                 return
-
-        if "@" not in cleaned_payload["email"] or "." not in cleaned_payload["email"]:
-            self.end_json(HTTPStatus.BAD_REQUEST, {"message": "Enter a valid email address."})
-            return
 
         try:
             inquiry_id = save_inquiry(
