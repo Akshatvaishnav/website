@@ -2,15 +2,10 @@ from __future__ import annotations
 
 import json
 import os
-import smtplib
-import ssl
-import threading
-import threading
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime
-from email.message import EmailMessage
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -153,8 +148,6 @@ def save_inquiry(payload: dict[str, str], remote_address: str | None) -> str:
             "student_class": payload["grade"],
             "message": payload["message"],
             "remote_address": remote_address,
-            "email_sent": False,
-            "email_error": None,
         },
         prefer="return=representation",
     )
@@ -169,82 +162,6 @@ def save_inquiry(payload: dict[str, str], remote_address: str | None) -> str:
         raise RuntimeError("Supabase insert did not return an enquiry id.")
 
     return str(inquiry_id)
-
-
-def update_email_status(inquiry_id: str, sent: bool, error_message: str | None = None) -> None:
-    supabase_request(
-        "PATCH",
-        get_supabase_table(),
-        payload={
-            "email_sent": sent,
-            "email_error": error_message,
-        },
-        query={"id": f"eq.{inquiry_id}"},
-    )
-
-
-def send_notification_email(payload: dict[str, str], inquiry_id: str) -> tuple[bool, str | None]:
-    smtp_host = os.getenv("SMTP_HOST", "").strip()
-    smtp_user = os.getenv("SMTP_USER", "").strip()
-    smtp_password = os.getenv("SMTP_PASSWORD", "").strip()
-    smtp_port = int(os.getenv("SMTP_PORT", "465"))
-    recipient = os.getenv("SCHOOL_NOTIFICATION_EMAIL", "st.judesfnr@gmail.com").strip()
-    sender = os.getenv("SMTP_FROM_EMAIL", smtp_user).strip()
-
-    if not smtp_host or not smtp_user or not smtp_password or not recipient:
-        return False, "Thank you. Your enquiry was saved, but email notification is not configured yet."
-
-    message = EmailMessage()
-    message["Subject"] = f"New Admission Enquiry #{inquiry_id} - {payload['name']}"
-    message["From"] = sender
-    message["To"] = recipient
-    message["Reply-To"] = payload["email"]
-    message.set_content(
-        "\n".join(
-            [
-                "A new enquiry has been submitted on the school website.",
-                "",
-                f"Inquiry ID: {inquiry_id}",
-                f"Parent Name: {payload['name']}",
-                f"Parent Email: {payload['email']}",
-                f"Mobile Number: {payload['phone']}",
-                f"Student Class: {payload['grade']}",
-                "",
-                "Message:",
-                payload["message"] or "No additional message provided.",
-            ]
-        )
-    )
-
-    use_ssl = os.getenv("SMTP_USE_SSL", "true" if smtp_port == 465 else "false").lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-    use_starttls = os.getenv("SMTP_STARTTLS", "true").lower() in {"1", "true", "yes"}
-
-    try:
-        if use_ssl:
-            with smtplib.SMTP_SSL(
-                smtp_host,
-                smtp_port,
-                context=ssl.create_default_context(),
-                timeout=20,
-            ) as server:
-                server.login(smtp_user, smtp_password)
-                server.send_message(message)
-        else:
-            with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
-                server.ehlo()
-                if use_starttls:
-                    server.starttls(context=ssl.create_default_context())
-                    server.ehlo()
-                server.login(smtp_user, smtp_password)
-                server.send_message(message)
-    except Exception as error:  # noqa: BLE001
-        return False, f"Thank you. Your enquiry was saved, but email notification failed: {error}"
-
-    return True, None
 
 
 class SchoolWebsiteHandler(SimpleHTTPRequestHandler):
@@ -356,35 +273,9 @@ class SchoolWebsiteHandler(SimpleHTTPRequestHandler):
 
         # ✅ Send response immediately
         self.end_json(
-        HTTPStatus.CREATED,
-        {
-            "message": "Thank you. Your enquiry was submitted successfully.",
-            "inquiryId": inquiry_id,
-        },
-        )
-
-        # ✅ Run email in background (non-blocking)
-        import threading
-
-        def background_task():
-            email_sent, email_error = send_notification_email(cleaned_payload, inquiry_id)
-        try:
-            update_email_status(inquiry_id, email_sent, email_error)
-        except Exception:
-            pass
-
-        threading.Thread(target=background_task, daemon=True).start() 
-        return
-
-        message = email_error or "Thank you. Your enquiry was saved successfully."
-
-        if status_update_error:
-            message = f"{message} However, the email status could not be synced back to Supabase."
-
-        self.end_json(
             HTTPStatus.CREATED,
             {
-                "message": message,
+                "message": "Thank you. Your enquiry was submitted successfully.",
                 "inquiryId": inquiry_id,
             },
         )
