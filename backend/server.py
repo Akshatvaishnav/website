@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import smtplib
+import ssl
+import threading
 import urllib.request
 import urllib.error
-import urllib.parse
 from datetime import datetime
+from email.message import EmailMessage
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -43,8 +46,9 @@ def get_supabase_key():
     return key
 
 
-def supabase_insert(data: dict[str, Any]) -> Any:
+def supabase_insert(data: dict[str, Any]) -> None:
     url = f"{get_supabase_url()}/rest/v1/inquiries"
+
     req = urllib.request.Request(
         url,
         data=json.dumps(data).encode(),
@@ -53,15 +57,70 @@ def supabase_insert(data: dict[str, Any]) -> Any:
             "apikey": get_supabase_key(),
             "Authorization": f"Bearer {get_supabase_key()}",
             "Content-Type": "application/json",
-            "Prefer": "return=representation",
+            "Prefer": "return=minimal",
         },
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as res:
-            return json.loads(res.read().decode())
+        urllib.request.urlopen(req, timeout=10)
     except Exception as e:
-        raise RuntimeError(f"Supabase error: {e}")
+        print("Supabase error:", e)
+
+
+# ---------------- EMAIL ---------------- #
+def send_email(data: dict[str, str]) -> None:
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    smtp_port = int(os.getenv("SMTP_PORT", "465"))
+    receiver = os.getenv("SCHOOL_NOTIFICATION_EMAIL")
+
+    if not smtp_host or not smtp_user or not smtp_password or not receiver:
+        print("Email not configured, skipping...")
+        return
+
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = f"New Enquiry - {data['name']}"
+        msg["From"] = smtp_user
+        msg["To"] = receiver
+
+        if data["email"]:
+            msg["Reply-To"] = data["email"]
+
+        msg.set_content(f"""
+New enquiry received:
+
+Name: {data['name']}
+Email: {data['email']}
+Phone: {data['phone']}
+Class: {data['student_class']}
+Message: {data['message']}
+        """)
+
+        with smtplib.SMTP_SSL(
+            smtp_host,
+            smtp_port,
+            context=ssl.create_default_context(),
+        ) as server:
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+
+    except Exception as e:
+        print("Email error:", e)
+
+
+# ---------------- BACKGROUND TASK ---------------- #
+def background_tasks(data: dict[str, Any]) -> None:
+    try:
+        supabase_insert(data)
+    except Exception as e:
+        print("DB error:", e)
+
+    try:
+        send_email(data)
+    except Exception as e:
+        print("Email error:", e)
 
 
 # ---------------- HANDLER ---------------- #
@@ -108,7 +167,7 @@ class Handler(SimpleHTTPRequestHandler):
             "submitted_at": datetime.now().isoformat(),
         }
 
-        # Basic validation (email optional)
+        # Validation
         if not data["name"] or not data["phone"] or not data["student_class"]:
             self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Required fields missing"})
             return
@@ -117,19 +176,13 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Invalid email"})
             return
 
-        # Save to Supabase
-        try:
-            result = supabase_insert(data)
-        except Exception as e:
-            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": str(e)})
-            return
+        # 🚀 Run tasks in background
+        threading.Thread(target=background_tasks, args=(data,)).start()
 
+        # ⚡ Instant response
         self.send_json(
             HTTPStatus.CREATED,
-            {
-                "message": "Enquiry submitted successfully",
-                "data": result,
-            },
+            {"message": "Enquiry submitted successfully"},
         )
 
 
