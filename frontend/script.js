@@ -61,7 +61,6 @@ if (contactForm && formFeedback) {
     const formData = new FormData(contactForm);
     const payload = {
       name: String(formData.get("name") || "").trim(),
-      email: String(formData.get("email") || "").trim(),
       grade: String(formData.get("grade") || "").trim(),
       phone: String(formData.get("phone") || "").trim(),
       message: String(formData.get("message") || "").trim(),
